@@ -1,6 +1,6 @@
 # Thredder portfolio and interview walkthrough
 
-Thredder is a backend-only Java CLI job scheduler built to make concurrency decisions visible and testable. v1.0 completes the original learning plan. It is a local portfolio release, not a production-service or performance certification.
+Thredder is an embeddable Java job scheduler with a CLI that makes concurrency decisions visible and testable. v1.0 completed the original learning plan; the current 1.1.0-SNAPSHOT preview adds an application-owned handler registry and packaged core library. Production readiness and exactly-once execution are not claimed.
 
 ## Start from a clean checkout
 
@@ -18,7 +18,7 @@ Enter `submit sleep 1000`, `priority 10 sleep 100`, and `list`; copy an accepted
 
 ## Architecture to explain
 
-The CLI validates commands and calls admission. A permit bounds concurrent submitters; a monitor protects a bounded pending queue, registry and lifecycle changes. Fixed worker threads claim jobs, run handlers outside that monitor and record outcomes. An optional journal forces acceptance/start/completion records. A separate receiver owns the business effect and its idempotency record.
+A Java host registers trusted handlers with `JobRegistry`, creates a scheduler with `Scheduler.builder()`, and submits descriptors. The CLI is another consumer that validates commands and uses the built-in handlers. A permit bounds concurrent submitters; a monitor protects a bounded pending queue, registry and lifecycle changes. Fixed worker threads claim jobs, run handlers outside that monitor and record outcomes. An optional journal forces acceptance/start/completion records. A separate receiver owns the business effect and its idempotency record.
 
 The useful distinction is between four boundaries: admission, ownership, durable scheduler state, and durable business effects. Solving one does not automatically solve the others. A completed scheduler job is not proof of an external transaction's result, and a failed scheduler job can follow a successful receiver commit if the acknowledgment was lost.
 
@@ -72,6 +72,16 @@ The retained run has 128 trials, 96 measured, and 32,768 per-submission records.
 
 Do not claim production capacity, a universal worker count, starvation freedom under arbitrary load, crash-proof external effects or exactly-once execution. Discuss what a next experiment would isolate: multiple producers, persistent-store latency, longer trials, independent JVM forks or receiver snapshot cost.
 
-## What v1.0 deliberately leaves open
+## Embed the library in an application
 
-No frontend, HTTP API, distributed scheduling, cron/calendar, automatic job splitting, benchmark-derived default configuration, journal compaction/migrations or production monitoring is included. Durable descriptors currently allow only sleep/fail jobs; custom Java callbacks are in-memory. Retention and receiver snapshot rewriting need further engineering for sustained service use. The Notion plan is historical; the repository roadmap records implementation status.
+Run `./thredder package` to build separate core, CLI and file-hasher JARs. Follow the [embedding guide](EMBEDDING.md) to run the file-hasher or compile your own consumer. The core has no external dependencies; the example compiles against only the core JAR.
+
+`JobRegistry` maps stable type names to payload validators and handlers. Registration is explicit and immutable. Validators run before admission and during recovery; handlers can run concurrently and must cooperate with interruption. Use versioned type names when payload meaning changes.
+
+`LibraryTest` checks registry immutability, duplicate/unknown types, payload validation, custom durable recovery, metrics and configured shutdown. Its recovery preflight test proves that a missing handler rejects startup before executing jobs or modifying records, then verifies that reopening with the complete registry succeeds.
+
+For an interview, explain the boundary: the application owns business logic and scheduler lifetime; Thredder owns admission and execution state. A plugin here means a registered handler within an embedded library. Dynamic loading, framework adapters and plugin isolation are not implemented.
+
+## Current limits
+
+No frontend, HTTP API, distributed scheduling, cron/calendar, automatic job splitting, benchmark-derived default configuration, journal compaction/migrations or production monitoring is included. Durable custom jobs use explicitly registered descriptors; arbitrary Java callbacks remain in-memory. All types in retained journal history must stay registered, including completed jobs. Only queued jobs resume; unresolved jobs require reconciliation. Retention and receiver snapshot rewriting need further engineering for sustained service use. The Notion plan is historical; the repository roadmap records implementation status.

@@ -21,10 +21,12 @@ import thredder.JobDescriptor;
 import thredder.JobRegistry;
 import thredder.Scheduler;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.Duration;
 
 class Example {
     public static void main(String[] args) throws Exception {
+        Files.createDirectories(Path.of("data"));
         JobRegistry handlers = JobRegistry.builder()
             .register("message.print.v1", payload -> {
                 if (payload.isBlank()) throw new IllegalArgumentException("Message required");
@@ -43,6 +45,16 @@ class Example {
     }
 }
 ```
+
+Save the example as `Example.java` and run from the repository root after packaging:
+
+```sh
+mkdir -p build/consumer
+javac --release 17 -cp build/libs/thredder-core-1.1.0-SNAPSHOT.jar -d build/consumer Example.java
+java -cp build/consumer:build/libs/thredder-core-1.1.0-SNAPSHOT.jar Example
+```
+
+The classpath separator above is for macOS/Linux. Each invocation submits a new job; it is not an idempotent retry.
 
 Printing is illustrative; a crash after output but before completion remains uncertain. Existing constructors retain built-in `sleep` and `fail` handlers. A custom registry replaces the defaults; call `.builtIns()` before `.register(...)` to include them. Descriptor construction checks the type identifier; payload validation occurs when offered to a scheduler and during recovery. The `JobDescriptor.handler()` compatibility helper resolves only built-ins.
 

@@ -1,6 +1,6 @@
 # Thredder roadmap
 
-The original conceptual design is now implemented through the v1.0 portfolio milestone. All originally staged tasks T01–T14 are complete; optional production hardening remains outside this milestone. The historical Notion plan has not been updated by this implementation task; this repository records the current code state.
+Current version: **1.1.0-SNAPSHOT on `plug-in`**. The original v1.0 learning tasks T01–T14 and the embeddable library preview tasks T15–T18 are implemented. The preview includes registered custom durable jobs, a builder, metrics and a packaged file-hashing consumer. Package-registry publication and host-specific adapters remain future work; optional production hardening is outside these milestones. The historical Notion plan has not been updated by this implementation task; this repository records the current code state.
 
 Statuses: **Done** means implemented and verified against the listed criteria. **Not started** means planned, not an active blocker. Dates and estimates for future releases are intentionally unset. Version labels below are proposed sequencing, not delivery commitments.
 

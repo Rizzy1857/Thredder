@@ -1,8 +1,10 @@
 # Thredder
 
-Thredder is a backend-only concurrent job scheduler with a long-running CLI. It is a learning and portfolio project for concurrency and Atlassian interview preparation.
+Thredder is an embeddable Java concurrent job scheduler with a CLI for learning and experimentation. Applications register job handlers and use a fixed worker pool, bounded queue, lifecycle tracking and optional durable recovery to run background work.
 
-**v1.0.0 completes the learning and portfolio plan:** a fixed worker thread pool, bounded thread-safe FIFO queue, unique job IDs, lifecycle tracking, `submit`/`list`/`status` commands, and tests. Java is now the implementation language for this version. Atomic claims, ordered resource locking, and bounded priority scheduling with aging are implemented. Deadline-based shutdown, cooperative cancellation and optional durable recovery are also implemented. The local idempotency demo, reproducible benchmarks and interview walkthrough are also complete. See the [roadmap](ROADMAP.md) for the completed scope and optional future hardening.
+**Current branch: `plug-in`, version `1.1.0-SNAPSHOT`.** The library preview builds on the completed v1.0 concurrency and portfolio project. It adds custom durable handlers, a configuration builder, lifecycle metrics and separate core, CLI and example JARs. Java 17 is the source/API target.
+
+Use Thredder for finite background tasks inside a Java application, such as processing local files. The included file-hasher demonstrates this integration. The original race, deadlock, starvation, overload and retry demonstrations remain available for concurrency and Atlassian interview preparation.
 
 ## Embeddable library preview — 1.1.0-SNAPSHOT
 
@@ -15,8 +17,9 @@ The `plug-in` branch adds an application-owned Java library with registered job 
 
 Packaging produces separate core, CLI and file-hasher example JARs in `build/libs`. See the [embedding guide](docs/EMBEDDING.md) for application code, handler contracts, recovery and a runnable file-processing example. These are local preview artifacts; no package-registry publication is claimed.
 
-## Final release guide
+## Documentation
 
+- [Embedding guide](docs/EMBEDDING.md): register application jobs, package the library and manage recovery/shutdown.
 - [Portfolio walkthrough](docs/WALKTHROUGH.md): reproduce each failure, explain its fix and discuss the limits.
 - [Benchmark report](benchmarks/README.md): measured results, method, raw trials and per-job samples.
 - [Changelog](CHANGELOG.md) and [roadmap](ROADMAP.md): delivered scope and remaining hardening opportunities.
@@ -50,19 +53,23 @@ help
 exit
 ```
 
-Replace the UUID placeholder with the actual accepted ID. A later `status` or `list` shows the completed result. The CLI accepts one command per line; it prints no prompt so piped input stays readable. Blank lines are ignored. Job types available are `sleep` (0–60000 milliseconds) and `fail` (a message). In-memory Java callers can submit other handlers through `Scheduler.Job`. Durable schedulers accept only validated `JobDescriptor` values.
+Replace the UUID placeholder with the actual accepted ID. A later `status` or `list` shows the completed result. The CLI accepts one command per line; it prints no prompt so piped input stays readable. Blank lines are ignored. CLI job types available are `sleep` (0–60000 milliseconds) and `fail` (a message). In-memory Java callers can submit other handlers through `Scheduler.Job`. For durable custom work, register handlers with `JobRegistry` and submit validated `JobDescriptor` values; see the embedding guide.
 
 `submit` returns `ACCEPTED <UUID>` or `REJECTED <reason>`. Full queues reject immediately by default; `--offer-ms` enables timed waiting. `list` shows every accepted job in submission order; `status` shows one job, including its failure detail. Invalid commands print `ERROR`; unknown IDs print `NOT FOUND`. Invalid startup options exit with code 2. `exit` and end-of-input stop admission and begin deadline-based shutdown, then print a shutdown report.
 
 ## Architecture and guarantees
 
 ```text
-CLI → Scheduler.offer → bounded pending queue → N fixed worker threads
-              ↓                                    ↓
-          registry ← synchronized lifecycle updates → optional forced journal
-              ↓
-       immutable list/status snapshots
+Java application / CLI
+        ↓
+JobRegistry validates descriptor → Scheduler.offer → bounded pending queue
+                                        ↓                    ↓
+                               lifecycle history      fixed worker pool
+                                        ↑                    ↓
+                                  optional journal ← handler outcome
 ```
+
+Applications create a scheduler through `Scheduler.builder()`, supply trusted handlers through an immutable `JobRegistry`, and own shutdown. The core JAR contains scheduling and persistence; the CLI and file-hasher are separate consumers. `metrics()` exposes lifecycle counts and current activity. Custom handlers execute outside the scheduler monitor and must be thread-safe.
 
 - The pending queue is a bounded list protected by the scheduler monitor. Capacity counts waiting jobs, separately from up to N executing jobs. Idle workers wait on the monitor and are notified on submission or close; they do not busy-spin.
 - A monitor coordinates admission, registry visibility and state transitions. Handlers run outside that monitor. A worker dequeues each accepted entry once during normal process execution.
@@ -83,7 +90,9 @@ The pending queue is bounded, but retained job history is not: long-running sess
 
 `./thredder test` compiles with warnings treated as errors and runs a dependency-free test suite. Assertions are explicit and do not depend on Java's `-ea` flag. A 45-second watchdog prevents a regression from hanging the entire test process.
 
-Coverage includes controlled queue saturation; FIFO with one worker; three workers executing simultaneously without exceeding their limit; 200 concurrent submissions with unique IDs and per-job execution counts; lifecycle snapshots and completion metadata; failure/interrupt isolation; admission racing shutdown; draining and repeated close; CLI commands, bad input, unknown IDs, EOF and rejection; invalid configuration; and no surviving scheduler workers. Coordination uses latches and bounded waits rather than sleep-based ordering assumptions.
+Library coverage includes immutable handler registration, invalid/unknown type rejection, custom-job recovery with preserved IDs, recovery preflight without journal mutation, metrics and configured close budgets.
+
+Concurrency coverage includes controlled queue saturation; FIFO with one worker; three workers executing simultaneously without exceeding their limit; 200 concurrent submissions with unique IDs and per-job execution counts; lifecycle snapshots and completion metadata; failure/interrupt isolation; admission racing shutdown; draining and repeated close; CLI commands, bad input, unknown IDs, EOF and rejection; invalid configuration; and no surviving scheduler workers. Coordination uses latches and bounded waits rather than sleep-based ordering assumptions.
 
 Tests also launch child JVMs that halt at acceptance, start and completion boundaries, including a torn-write scenario. These verify the specified recovery paths; they do not prove correctness for every storage failure, external effect, JVM failure or thread interleaving.
 
