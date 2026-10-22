@@ -81,7 +81,7 @@ public final class Main {
     }
 
     static void run(BufferedReader input, PrintWriter output, Scheduler scheduler, Duration offerTimeout) throws IOException {
-        output.println("Thredder v1.0.0 — type help for commands");
+        output.println("Thredder v1.1.0-SNAPSHOT — type help for commands");
         String line;
         while ((line = input.readLine()) != null) {
             String stripped = line.strip();

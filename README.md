@@ -4,6 +4,17 @@ Thredder is a backend-only concurrent job scheduler with a long-running CLI. It 
 
 **v1.0.0 completes the learning and portfolio plan:** a fixed worker thread pool, bounded thread-safe FIFO queue, unique job IDs, lifecycle tracking, `submit`/`list`/`status` commands, and tests. Java is now the implementation language for this version. Atomic claims, ordered resource locking, and bounded priority scheduling with aging are implemented. Deadline-based shutdown, cooperative cancellation and optional durable recovery are also implemented. The local idempotency demo, reproducible benchmarks and interview walkthrough are also complete. See the [roadmap](ROADMAP.md) for the completed scope and optional future hardening.
 
+## Embeddable library preview — 1.1.0-SNAPSHOT
+
+The `plug-in` branch adds an application-owned Java library with registered job handlers. Your application supplies the work; Thredder supplies bounded scheduling, lifecycle tracking and optional recovery. The CLI remains available. This is an embeddable extension API, not an IDE or framework-specific plugin.
+
+```sh
+./thredder test
+./thredder package
+```
+
+Packaging produces separate core, CLI and file-hasher example JARs in `build/libs`. See the [embedding guide](docs/EMBEDDING.md) for application code, handler contracts, recovery and a runnable file-processing example. These are local preview artifacts; no package-registry publication is claimed.
+
 ## Final release guide
 
 - [Portfolio walkthrough](docs/WALKTHROUGH.md): reproduce each failure, explain its fix and discuss the limits.
@@ -172,7 +183,7 @@ The journal uses versioned, length-delimited records with CRC32 checksums and fu
 - **I/O failure:** stop admission/dispatch, expose the fault and leave uncertain outcomes unresolved. An acceptance call that throws may still have a durable record; do not infer that it is safe to resubmit.
 - **Corrupt or incomplete data:** reject the entire startup before executing jobs, preserve the file unchanged, and report the error. There is no automatic truncation or repair that could discard accepted work. Preserve the file and restore a known-good copy or reconcile records before restarting.
 
-Only allowlisted `JobDescriptor("sleep", "...")` and `JobDescriptor("fail", "...")` jobs are persisted. Arbitrary callbacks, Java object graphs and thread objects are never serialized. New durable job types require explicit descriptor validation/handler code. The journal format is versioned but has no migration facility yet. Individual text fields use the journal codec's 65,535-byte encoded limit; oversized acceptance data is rejected before writing. Failure details are truncated to 8,000 characters to keep completion records bounded.
+The CLI persists the built-in `sleep` and `fail` descriptors. Embedded applications can persist custom descriptor types explicitly registered through `JobRegistry`; every recovered type, including completed history, must still be registered. Arbitrary callbacks, Java object graphs and thread objects are never serialized. New durable job types require explicit descriptor validation/handler code. The journal format is versioned but has no migration facility yet. Individual text fields use the journal codec's 65,535-byte encoded limit; oversized acceptance data is rejected before writing. Failure details are truncated to 8,000 characters to keep completion records bounded.
 
 Journal files and the in-memory history grow without compaction. Persistence serializes disk I/O under the scheduler monitor, trading throughput for a simple auditable acceptance boundary; benchmarks and retention/compaction are future work. CRC32 detects accidental corruption and is not an authenticity mechanism. Keep journals private and treat this as a local learning implementation.
 

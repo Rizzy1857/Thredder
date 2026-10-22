@@ -126,3 +126,16 @@ Verification: `benchmarks/v1.0-local` retains 128 trials (96 measured), environm
 ## Cross-cutting follow-ups
 
 Before treating Thredder as a long-running service, decide job-history retention, resource limits and observability. These are additional hardening considerations, not completed v0.1 guarantees. No frontend or distributed deployment is planned.
+
+## 1.1 library preview · Implemented on plug-in branch
+
+Depends on T14. Local preview; no Maven Central publication or framework adapter.
+
+| Task | Status | Acceptance criteria |
+|---|---|---|
+| T15: Embeddable core and builder | Done | Core JAR excludes CLI/demo classes; existing CLI and tests still run; application owns shutdown budgets. |
+| T16: Registered durable handlers | Done | Duplicate/unknown types reject; immutable registry; validation precedes admission/recovery mutations; custom queued jobs recover with original IDs. |
+| T17: Real consumer example | Done | File-hasher compiles against only core, writes SHA-256 outputs, and resumes without resubmitting completed work. |
+| T18: Integration guide and verification | Done | Document host responsibilities, lifecycle metrics, versioned handler contracts, packaging and limitations. |
+
+Future choices: a Maven/Gradle publishing workflow and a host-specific adapter can follow a concrete consumer requirement. Dynamic plugin loading, sandboxing, hot reload and automatic retries are outside this preview.

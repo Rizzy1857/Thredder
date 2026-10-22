@@ -2,6 +2,15 @@
 
 User-visible changes are recorded by version. Unreleased plans belong in the roadmap; entries below describe implemented work.
 
+## 1.1.0-SNAPSHOT — unreleased library preview
+
+- Added immutable application-owned job-handler registration and a scheduler configuration builder.
+- Custom durable descriptors are validated before admission and before any recovery mutation or execution; unknown handlers fail startup without changing records.
+- Added lifecycle metrics and configurable close timeouts while preserving existing constructors and CLI behavior.
+- Split local packaging into core, CLI and a file-hashing example that compiles against only the core JAR.
+- Added registry, custom recovery, recovery preflight and builder lifecycle tests, plus embedding documentation.
+- Added repository ignore rules and removed generated build/scratch/release artifacts from version control while retaining benchmark evidence.
+
 ## 1.0.0 — 2026-10-19
 
 ### Added

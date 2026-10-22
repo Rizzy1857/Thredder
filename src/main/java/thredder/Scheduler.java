@@ -58,7 +58,7 @@ public final class Scheduler implements AutoCloseable {
             id = record.id(); name = record.name(); descriptor = record.descriptor();
             priority = record.priority(); enqueuedAt = now; submittedAt = record.submitted();
             startedAt = record.started(); finishedAt = record.finished(); error = record.error(); state = record.state();
-            job = state == State.QUEUED ? descriptor.handler() : null;
+            job = null; // Recovery binds trusted application handlers after registry preflight.
         }
         Journal.Record record() {
             return new Journal.Record(id, name, descriptor, priority, state, submittedAt, startedAt, finishedAt, error);
@@ -81,10 +81,60 @@ public final class Scheduler implements AutoCloseable {
     private final Semaphore submitters;
     private final int maxSubmitters;
     private final Journal journal;
+    private final JobRegistry registryBindings;
+    private Duration closeGrace = Duration.ofSeconds(5);
+    private Duration closeCancellationWait = Duration.ofSeconds(1);
     private int liveWorkers;
     private boolean stopDispatch;
     private String storageError;
     private boolean journalClosed;
+
+    /** Start a configured application-owned scheduler. The application must close it. */
+    public static Builder builder() { return new Builder(); }
+
+    public static final class Builder {
+        private int workers = 2, capacity = 16, submitters = 16;
+        private Policy policy = Policy.FIFO;
+        private Duration aging = Duration.ofSeconds(1), grace = Duration.ofSeconds(5), cancellation = Duration.ofSeconds(1);
+        private Path store;
+        private JobRegistry bindings = JobRegistry.defaults();
+        private Builder() { }
+        public Builder workers(int value) { workers = value; return this; }
+        public Builder capacity(int value) { capacity = value; return this; }
+        public Builder submitterLimit(int value) { submitters = value; return this; }
+        public Builder policy(Policy value) { policy = Objects.requireNonNull(value); return this; }
+        public Builder agingInterval(Duration value) { aging = Objects.requireNonNull(value); return this; }
+        public Builder store(Path value) { store = Objects.requireNonNull(value); return this; }
+        public Builder registry(JobRegistry value) { bindings = Objects.requireNonNull(value); return this; }
+        public Builder shutdownTimeouts(Duration drain, Duration observeCancellation) {
+            durationNanos(drain); durationNanos(observeCancellation);
+            grace = drain; cancellation = observeCancellation; return this;
+        }
+        public Scheduler build() {
+            Scheduler result = new Scheduler(workers, capacity, policy, aging, System::nanoTime,
+                submitters, store, Journal.Probe.NONE, bindings);
+            result.closeGrace = grace; result.closeCancellationWait = cancellation;
+            return result;
+        }
+    }
+
+    public record Metrics(int queued, int running, int succeeded, int failed, int cancelled,
+                          int unresolved, int activeWorkers, int activeSubmitters, boolean accepting, String storageError) { }
+
+    /** Point-in-time lifecycle counts; retained history contributes to terminal counts. */
+    public Metrics metrics() {
+        synchronized (gate) {
+            int[] counts = new int[State.values().length];
+            int active = 0;
+            for (Entry entry : registry.values()) {
+                counts[entry.state.ordinal()]++;
+                if (entry.runner != null) active++;
+            }
+            return new Metrics(counts[State.QUEUED.ordinal()], counts[State.RUNNING.ordinal()],
+                counts[State.SUCCEEDED.ordinal()], counts[State.FAILED.ordinal()], counts[State.CANCELLED.ordinal()],
+                counts[State.UNRESOLVED.ordinal()], active, activeSubmitters(), accepting, storageError);
+        }
+    }
 
     public Scheduler(int workerCount, int queueCapacity) {
         this(workerCount, queueCapacity, Policy.FIFO, Duration.ofSeconds(1), System::nanoTime);
@@ -108,6 +158,13 @@ public final class Scheduler implements AutoCloseable {
 
     Scheduler(int workerCount, int queueCapacity, Policy policy,
               Duration agingInterval, LongSupplier clock, int maxSubmitters, Path store, Journal.Probe probe) {
+        this(workerCount, queueCapacity, policy, agingInterval, clock, maxSubmitters, store, probe, JobRegistry.defaults());
+    }
+
+    private Scheduler(int workerCount, int queueCapacity, Policy policy,
+              Duration agingInterval, LongSupplier clock, int maxSubmitters, Path store, Journal.Probe probe,
+              JobRegistry bindings) {
+        registryBindings = Objects.requireNonNull(bindings);
         if (maxSubmitters < 1) throw new IllegalArgumentException("Submitter cap must be positive");
         this.maxSubmitters = maxSubmitters;
         this.submitters = new Semaphore(maxSubmitters);
@@ -123,10 +180,14 @@ public final class Scheduler implements AutoCloseable {
         try {
             if (journal != null) {
                 List<Journal.Record> records = journal.recover();
+                // Validate every descriptor before any recovery mutation or worker startup.
+                Map<UUID, Job> handlers = new LinkedHashMap<>();
+                for (Journal.Record record : records) handlers.put(record.id(), registryBindings.resolve(record.descriptor()));
                 long pending = records.stream().filter(r -> r.state() == State.QUEUED).count();
                 if (pending > queueCapacity) throw new IllegalArgumentException("Recovered queue exceeds capacity; restart with capacity >= " + pending);
                 for (Journal.Record record : records) {
                     Entry entry = new Entry(record, clock.getAsLong());
+                    if (entry.state == State.QUEUED) entry.job = handlers.get(entry.id);
                     if (entry.state == State.RUNNING) {
                         entry.state = State.UNRESOLVED;
                         entry.error = "Process ended before completion was durably recorded; not automatically retried";
@@ -173,7 +234,7 @@ public final class Scheduler implements AutoCloseable {
 
     public Submission offer(String name, int priority, JobDescriptor descriptor, Duration timeout) throws InterruptedException {
         Objects.requireNonNull(descriptor, "Job descriptor required");
-        return admit(name, priority, descriptor.handler(), durationNanos(timeout), true, descriptor);
+        return admit(name, priority, registryBindings.resolve(descriptor), durationNanos(timeout), true, descriptor);
     }
 
     private static long durationNanos(Duration duration) {
@@ -396,5 +457,5 @@ public final class Scheduler implements AutoCloseable {
     }
 
     /** Convenience shutdown: five seconds to drain, one second to observe cancellation. */
-    @Override public void close() { shutdown(Duration.ofSeconds(5), Duration.ofSeconds(1)); }
+    @Override public void close() { shutdown(closeGrace, closeCancellationWait); }
 }

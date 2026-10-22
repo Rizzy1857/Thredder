@@ -1,7 +1,0 @@
-src/test/java/thredder/AdmissionTest.java
-src/test/java/thredder/ConcurrencyTest.java
-src/test/java/thredder/CrashFixture.java
-src/test/java/thredder/IdempotencyTest.java
-src/test/java/thredder/ReceiverCrashFixture.java
-src/test/java/thredder/RecoveryTest.java
-src/test/java/thredder/SchedulerTest.java

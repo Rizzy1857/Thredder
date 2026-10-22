@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+if [[ -n "${JAVA_HOME:-}" ]]; then
+  jdk="$JAVA_HOME/bin"
+elif [[ -x /opt/homebrew/opt/openjdk/bin/javac ]]; then
+  jdk=/opt/homebrew/opt/openjdk/bin
+else
+  jdk=""
+fi
+javac_cmd="${jdk:+$jdk/}javac"
+jar_cmd="${jdk:+$jdk/}jar"
+version=1.1.0-SNAPSHOT
+mkdir -p build/libs
+staging=$(mktemp -d build/package.XXXXXX)
+trap 'rm -rf "$staging"' EXIT
+mkdir -p "$staging/core" "$staging/cli" "$staging/example"
+core=(AtomicClaim JobDescriptor JobRegistry Journal ResourceLockManager Scheduler)
+core_sources=()
+for name in "${core[@]}"; do core_sources+=("src/main/java/thredder/$name.java"); done
+"$javac_cmd" --release 17 -Xlint:all -Werror -d "$staging/core" "${core_sources[@]}"
+printf 'Manifest-Version: 1.0\nImplementation-Version: %s\nAutomatic-Module-Name: io.github.rizzy1857.thredder.core\n\n' "$version" > "$staging/core.mf"
+"$jar_cmd" --create --file "build/libs/thredder-core-$version.jar" --manifest "$staging/core.mf" -C "$staging/core" .
+"$javac_cmd" --release 17 -Xlint:all -Werror -cp "build/libs/thredder-core-$version.jar" -d "$staging/cli" \
+  src/main/java/thredder/Main.java src/main/java/thredder/TransferDemo.java \
+  src/main/java/thredder/IdempotentReceiver.java src/main/java/thredder/RetryDemo.java src/main/java/thredder/Benchmark.java
+printf 'Manifest-Version: 1.0\nMain-Class: thredder.Main\nClass-Path: thredder-core-%s.jar\nImplementation-Version: %s\n\n' "$version" "$version" > "$staging/cli.mf"
+"$jar_cmd" --create --file "build/libs/thredder-cli-$version.jar" --manifest "$staging/cli.mf" -C "$staging/cli" .
+"$javac_cmd" --release 17 -Xlint:all -Werror -cp "build/libs/thredder-core-$version.jar" -d "$staging/example" examples/file-hasher/FileHasher.java
+printf 'Manifest-Version: 1.0\nMain-Class: examples.FileHasher\nClass-Path: thredder-core-%s.jar\n\n' "$version" > "$staging/example.mf"
+"$jar_cmd" --create --file "build/libs/thredder-file-hasher-$version.jar" --manifest "$staging/example.mf" -C "$staging/example" .
+printf 'Built core, CLI and file-hasher JARs in build/libs (version %s)\n' "$version"

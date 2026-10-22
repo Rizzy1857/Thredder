@@ -1,0 +1,52 @@
+# Compiled Java and generated build artifacts
+build/
+out/
+target/
+.gradle/
+*.class
+*.jar
+# Build-tool wrappers must remain shareable if introduced.
+!gradle-wrapper.jar
+!maven-wrapper.jar
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# Local journals, receiver snapshots and runtime logs
+/data/
+*.thr
+*.thr.lock
+*.pending
+*.log
+
+# Release archives and scratch/authentication helpers
+/outputs/
+/work/
+
+# Local configuration and secrets (keep example configuration shareable)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Editor and operating-system files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
+
+# Python report-tool caches
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Source, documentation and benchmarks/v1.0-local are intentionally tracked.

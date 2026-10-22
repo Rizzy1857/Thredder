@@ -36,6 +36,7 @@ public final class SchedulerTest {
         AdmissionTest.run();
         RecoveryTest.run();
         IdempotencyTest.run();
+        LibraryTest.run();
         check(Thread.getAllStackTraces().keySet().stream()
             .noneMatch(t -> t.isAlive() && t.getName().startsWith("thredder-worker-")), "worker leak");
         watchdog.interrupt();

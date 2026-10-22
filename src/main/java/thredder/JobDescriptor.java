@@ -2,27 +2,14 @@ package thredder;
 
 import java.util.Objects;
 
-/** Allowlisted, version-independent job data; never serialized executable objects. */
+/** Durable data only. The owning scheduler's registry validates and resolves the payload. */
 public record JobDescriptor(String type, String argument) {
     public JobDescriptor {
         Objects.requireNonNull(type, "Job type required");
         Objects.requireNonNull(argument, "Job argument required");
-        switch (type) {
-            case "sleep" -> {
-                long millis = Long.parseLong(argument);
-                if (millis < 0 || millis > 60_000) throw new IllegalArgumentException("Sleep must be 0..60000 ms");
-            }
-            case "fail" -> {
-                if (argument.isBlank()) throw new IllegalArgumentException("Failure message required");
-            }
-            default -> throw new IllegalArgumentException("Unknown job type: " + type);
-        }
+        if (!type.matches("[A-Za-z][A-Za-z0-9._-]{0,127}"))
+            throw new IllegalArgumentException("Job type must be a 1..128 character identifier");
     }
-    public Scheduler.Job handler() {
-        return switch (type) {
-            case "sleep" -> () -> Thread.sleep(Long.parseLong(argument));
-            case "fail" -> () -> { throw new IllegalStateException(argument); };
-            default -> throw new IllegalStateException("Unvalidated descriptor");
-        };
-    }
+    /** Compatibility helper for the built-in sleep/fail types. Custom jobs use Scheduler.offer. */
+    public Scheduler.Job handler() { return JobRegistry.defaults().resolve(this); }
 }

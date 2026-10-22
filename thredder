@@ -13,14 +13,15 @@ javac_cmd="${jdk:+$jdk/}javac"
 action="${1:-run}"
 if [[ $# -gt 0 ]]; then shift; fi
 case "$action" in
-  build|test|run|demo|retry-demo|benchmark) ;;
-  *) echo 'Usage: ./thredder [build|test|run|demo|retry-demo|benchmark] [--workers N --capacity N]' >&2; exit 2 ;;
+  build|test|run|demo|retry-demo|benchmark|package) ;;
+  *) echo 'Usage: ./thredder [build|test|run|demo|retry-demo|benchmark|package] [--workers N --capacity N]' >&2; exit 2 ;;
 esac
+if [[ "$action" == package ]]; then exec bash ./package-library; fi
 mkdir -p build/classes build/test-classes
 find src/main/java -name '*.java' | sort > build/main-sources
 "$javac_cmd" --release 17 -Xlint:all -Werror -d build/classes @build/main-sources
 case "$action" in
-  build) echo 'Built Thredder v1.0.0' ;;
+  build) echo 'Built Thredder v1.1.0-SNAPSHOT' ;;
   benchmark) exec "$java_cmd" -cp build/classes thredder.Benchmark "$@" ;;
   retry-demo) exec "$java_cmd" -cp build/classes thredder.RetryDemo "$@" ;;
   demo) exec "$java_cmd" -cp build/classes thredder.TransferDemo ;;
